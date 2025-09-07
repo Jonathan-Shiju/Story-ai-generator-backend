@@ -1,0 +1,24 @@
+set_genre:
+  description: >
+    Add guidance for setting the genre of the following story summary: {story}.
+    Include genre conventions, themes, and expectations to help shape the narrative direction.
+  expected_output: >
+    An added genre guide that outlines conventions, themes, and expectations for the story in not more than 50 words.
+  agent: genre_setter
+
+set_tone:
+  description: >
+    Add guidance for establishing the tone of the story to the previous output to {tone}
+    Suggest mood, atmosphere, and stylistic elements to ensure the story starts with the intended emotional impact.
+  expected_output: >
+    An added tone guide that describes the mood, atmosphere, and stylistic elements for the story's opening in not more than 50 words.
+  agent: tone_setter
+
+create_character:
+  description: >
+    Add detailed guidance for characters based on the previous output for {audience} audience.
+    Include character profiles, motivations, relationships, and attributes that will enrich the narrative.
+  expected_output: >
+    Added character profiles with motivations, relationships, and attributes relevant to the story.
+    Each character should be tagged with their role (protagonist, side character, enemy, etc.).
+  agent: character_creator

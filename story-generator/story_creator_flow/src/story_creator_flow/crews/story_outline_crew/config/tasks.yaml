@@ -1,0 +1,23 @@
+create_story_outline:
+  description: >
+    Create a structured outline for the story using the provided,
+    tone, and character information: {story_genre}, {story_tone}
+    {characters}.
+    Organize the story into major plot points, character arcs,
+    and key events. It should be for {audience}
+  expected_output: >
+    A clear and logical story outline with major plot points,
+    character arcs, and key events.
+  agent: story_outline_creator
+
+fill_story_details:
+  description: >
+    Expand the story outline by adding vivid details,
+    engaging dialogues, and immersive descriptions to each scene from the previous output.
+    Ensure the narrative is rich, emotionally engaging, and realistic.
+    It should be for {audience}
+  expected_output: >
+    A detailed story draft with filled-in scenes,
+    authentic dialogues, and immersive descriptions based on the outline.
+  agent: story_detail_filler
+  markdown: false

@@ -1,0 +1,12 @@
+create_scenes:
+  description: >
+    Take the completed story and break it into five self-contained scenes.
+    Each scene should include the full setting, all relevant characters,
+    and detailed dialogues for each character.
+    Ensure every scene contains all the information needed for visual adaptation,
+    such as converting to an image or storyboard.
+    The story is as follows: {story}
+  expected_output: >
+    Five self-contained scenes, each with a good description of the physical setting
+    along with all the characters and their actions, enough for drawing the scene.
+  agent: scene_creator
