@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
 import sys
 import os
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 sys.path.append(os.path.join(os.path.dirname(__file__), 'story-generator', 'story_creator_flow', 'src'))
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -12,14 +14,15 @@ import io
 import base64
 from story_creator_flow.main import StoryFlow, ScenesFlow
 import os
+from crewai import llm
 
 # Define LoRA paths
 LORA_PATHS = {
-    "lego": "./Stable_Diffusion_lora/Lego.safetensors",
-    "oil": "./Stable_Diffusion_lora/oil.safetensors",
-    "manga": "./Stable_Diffusion_lora/Manga.safetensors",
-    "anime": "./Stable_Diffusion_lora/animescreencap_xl.safetensors",
-    "sketch": "./Stable_Diffusion_lora/Sketch.safetensors",
+    "lego": "../Stable_Diffusion_lora/Lego.safetensors",
+    "oil": "../Stable_Diffusion_lora/Oil.safetensors",
+    "manga": "../Stable_Diffusion_lora/Manga.safetensors",
+    "anime": "../Stable_Diffusion_lora/animescreencap_xl.safetensors",
+    "sketch": "../Stable_Diffusion_lora/Sketch.safetensors",
 }
 
 app = FastAPI(title="CrewAI Story Generator API")
@@ -42,8 +45,7 @@ def startup_event():
     lora_adapters = {}
     for style, path in LORA_PATHS.items():
         if os.path.exists(path):
-            pipe.load_lora_weights(path, adapter_name=style)
-            lora_adapters[style] = True
+            lora_adapters[style] = path
         else:
             print(f"Warning: LoRA file not found at {path}. Skipping '{style}' style.")
 
@@ -78,40 +80,53 @@ async def root():
 @app.post("/api/stories/generate")
 async def generate_story(payload: GenerateStoryPayload):
     """Generates a story outline based on a prompt, genre, and tone."""
-    story_flow = StoryFlow()
-    story_flow.kickoff(inputs={
-        "user_story": payload.prompt,
-        "user_genre": payload.genre,
-        "user_tone": payload.tone,
-        "user_audience": payload.artStyle
-    })
+    def run_story_flow():
+        story_flow = StoryFlow()
+        story_flow.kickoff(inputs={
+            "user_story": payload.prompt,
+            "user_genre": payload.genre,
+            "user_tone": payload.tone,
+            "user_audience": "kids"
+        })
+        return story_flow
+    
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as executor:
+        story_flow = await loop.run_in_executor(executor, run_story_flow)
     
     if not story_flow.state.story:
         raise HTTPException(status_code=500, detail="Story generation failed.")
         
     return story_flow.state.story
 
+
 @app.post("/api/stories/refine")
 async def refine_story(payload: RefineStoryPayload):
-    """Refines an existing story based on a new prompt."""
-    story_flow = StoryFlow()
-    story_flow.kickoff(inputs={
-        "user_story": payload.prompt,
-        "user_genre": payload.story.get("genre", "fantasy"),
-        "user_tone": payload.story.get("tone", "lighthearted"),
-        "user_audience": payload.story.get("artStyle", "general")
-    })
-
-    if not story_flow.state.story:
-        raise HTTPException(status_code=500, detail="Story refinement failed.")
-
-    return story_flow.state.story
+    """Refines an existing story using Gemini 2.0 Flash Lite via CrewAI."""
+    try:
+        prompt = f"Refine this story for kids: {payload.story}\nPrompt: {payload.prompt}"
+        refined_story = await llm.chat(
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that refines children's stories."},
+                {"role": "user", "content": prompt}
+            ],
+            model="gemini-2.0-flash-lite"
+        )
+        return {"refined_story": refined_story}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM refinement failed: {str(e)}")
 
 @app.post("/api/stories/get_scenes")
 async def get_scenes(payload: GetScenesPayload):
     """Generates 5 distinct scenes from a story outline and creates images for them."""
-    scenes_flow = ScenesFlow()
-    scenes_flow.kickoff(inputs={"story": str(payload.story)})
+    def run_scenes_flow():
+        scenes_flow = ScenesFlow()
+        scenes_flow.kickoff(inputs={"story": str(payload.story)})
+        return scenes_flow
+    
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as executor:
+        scenes_flow = await loop.run_in_executor(executor, run_scenes_flow)
     
     if not scenes_flow.state.scenes:
         raise HTTPException(status_code=500, detail="Scene generation failed.")
@@ -119,27 +134,30 @@ async def get_scenes(payload: GetScenesPayload):
     scenes_dict = scenes_flow.state.scenes.dict()
 
     art_style = payload.artStyle.lower()
-    if art_style not in lora_adapters:
+    lora_path = lora_adapters.get(art_style)
+    if not lora_path:
         raise HTTPException(status_code=400, detail=f"Art style '{art_style}' not supported.")
     
-    # Set the LoRA adapter for the current request
-    pipe.set_adapters(art_style)
+    # Load the specific LoRA adapter for this request
+    pipe.load_lora_weights(lora_path)
 
     formatted_scenes = {}
-    for key, scene_prompt in scenes_dict.items():
-        if not scene_prompt:
-            formatted_scenes[key] = {"PIL": None, "Text": scene_prompt}
-            continue
+    try:
+        for key, scene_prompt in scenes_dict.items():
+            if not scene_prompt:
+                formatted_scenes[key] = {"PIL": None, "Text": scene_prompt}
+                continue
 
-        image = pipe(prompt=scene_prompt).images[0]
-        
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            image = pipe(prompt=scene_prompt).images[0]
+            
+            buffered = io.BytesIO()
+            image.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-        formatted_scenes[key] = {"PIL": img_str, "Text": scene_prompt}
-    
-    # Unload the adapter after the request is complete
-    pipe.set_adapters([])
+            formatted_scenes[key] = {"PIL": img_str, "Text": scene_prompt}
+    finally:
+        # Unload the adapter in a finally block to ensure it's always unloaded
+        # This is the key difference and an improvement from the original code
+        pipe.unload_lora_weights()
     
     return formatted_scenes

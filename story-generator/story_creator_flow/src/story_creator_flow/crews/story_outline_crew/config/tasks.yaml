@@ -18,6 +18,7 @@ fill_story_details:
     It should be for {audience}
   expected_output: >
     A detailed story draft with filled-in scenes,
-    authentic dialogues, and immersive descriptions based on the outline.
+    authentic dialogues, and immersive descriptions based on the outline, with the following: Introduction/setting,
+    Conflict/Rising Action, Climax, Resolution.
   agent: story_detail_filler
   markdown: false

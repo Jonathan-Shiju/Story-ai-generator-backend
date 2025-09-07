@@ -8,11 +8,6 @@ from pydantic import BaseModel
 # you can use the @before_kickoff and @after_kickoff decorators
 # https://docs.crewai.com/concepts/crews#example-crew-class-with-decorators
 
-class StoryDetailFormat(BaseModel):
-    introduction_setting: str
-    conflict_rising_action: str
-    climax: str
-    resolution: str
 
 @CrewBase
 class StoryOutlineCrew:
@@ -47,7 +42,6 @@ class StoryOutlineCrew:
         return Task(
             config=self.tasks_config["fill_story_details"],
             markdown=False,
-            output_pydantic=StoryDetailFormat,
         )
 
     @crew
